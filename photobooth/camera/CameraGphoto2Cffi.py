@@ -42,14 +42,9 @@ class CameraGphoto2Cffi(CameraInterface):
 
     def cleanup(self):
 
-        try:
-            self._cap.config['imgsettings']['imageformat'].set(self._imgfmt)
-            self._cap.config['imgsettings']['imageformatsd'].set(
-                self._imgfmtsd)
-            # self._cap.config['settings']['autopoweroff'].set(
-            #     self._autopoweroff)
-        except BaseException as e:
-            logging.warn('Error while changing camera settings: {}.'.format(e))
+        self._cap.config['imgsettings']['imageformat'].set(self._imgfmt)
+        self._cap.config['imgsettings']['imageformatsd'].set(self._imgfmtsd)
+        # self._cap.config['settings']['autopoweroff'].set(self._autopoweroff)
 
     def _setupCamera(self):
 
@@ -57,25 +52,21 @@ class CameraGphoto2Cffi(CameraInterface):
         logging.info('Supported operations: %s',
                      self._cap.supported_operations)
 
-        try:
-            # make sure camera format is not set to raw
-            imgfmt = 'Large Fine JPEG'
-            self._imgfmt = self._cap.config['imgsettings']['imageformat'].value
-            if 'raw' in self._imgfmt.lower():
-                self._cap.config['imgsettings']['imageformat'].set(imgfmt)
-            self._imgfmtsd = (
-                self._cap.config['imgsettings']['imageformatsd'].value)
-            if 'raw' in self._imgfmtsd.lower():
-                self._cap.config['imgsettings']['imageformatsd'].set(imgfmt)
+        # make sure camera format is not set to raw
+        imgfmt = 'Large Fine JPEG'
+        self._imgfmt = self._cap.config['imgsettings']['imageformat'].value
+        if 'raw' in self._imgfmt.lower():
+            self._cap.config['imgsettings']['imageformat'].set(imgfmt)
+        self._imgfmtsd = self._cap.config['imgsettings']['imageformatsd'].value
+        if 'raw' in self._imgfmtsd.lower():
+            self._cap.config['imgsettings']['imageformatsd'].set(imgfmt)
 
-            # make sure autopoweroff is disabled
-            # this doesn't seem to work
-            # self._autopoweroff = int(
-            #     self._cap.config['settings']['autopoweroff'].value)
-            #  if self._autopoweroff > 0:
-            #      self._cap.config['settings']['autopoweroff'].set("0")
-        except BaseException as e:
-            logging.warn('Error while changing camera settings: {}.'.format(e))
+        # make sure autopoweroff is disabled
+        # this doesn't seem to work
+        # self._autopoweroff = int(
+        #                   self._cap.config['settings']['autopoweroff'].value)
+        #  if self._autopoweroff > 0:
+        #      self._cap.config['settings']['autopoweroff'].set("0")
 
         # print current config
         self._printConfig(self._cap.config)
@@ -106,19 +97,13 @@ class CameraGphoto2Cffi(CameraInterface):
 
     def setActive(self):
 
-        try:
-            self._cap._get_config()['actions']['viewfinder'].set(True)
-            self._cap._get_config()['settings']['output'].set('PC')
-        except BaseException as e:
-            logging.warn('Cannot set camera output to active: {}.'.format(e))
+        self._cap._get_config()['actions']['viewfinder'].set(True)
+        self._cap._get_config()['settings']['output'].set('PC')
 
     def setIdle(self):
 
-        try:
-            self._cap._get_config()['actions']['viewfinder'].set(False)
-            self._cap._get_config()['settings']['output'].set('Off')
-        except BaseException as e:
-            logging.warn('Cannot set camera output to idle: {}.'.format(e))
+        self._cap._get_config()['actions']['viewfinder'].set(False)
+        self._cap._get_config()['settings']['output'].set('Off')
 
     def getPreview(self):
 

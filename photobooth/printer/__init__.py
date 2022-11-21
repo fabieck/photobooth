@@ -19,8 +19,7 @@
 
 # Available printer modules as tuples of (config name, module name, class name)
 modules = (
-    ('PyQt5', 'PrinterPyQt5', 'PrinterPyQt5'),
-    ('PyCUPS', 'PrinterPyCups', 'PrinterPyCups'))
+    ('PyQt5', 'PrinterPyQt5', 'PrinterPyQt5'), )
 
 
 class Printer:
@@ -29,6 +28,7 @@ class Printer:
 
         self.pageSize = page_size
 
+        print("init of printer")
     @property
     def pageSize(self):
 

@@ -89,6 +89,8 @@ class RoundProgressBar(QtWidgets.QWidget):
     def __init__(self, begin, end, value):
 
         super().__init__()
+        self.setObjectName('ProgressBar')
+
 
         self._begin = begin
         self._end = end
@@ -188,7 +190,7 @@ class TransparentOverlay(QtWidgets.QWidget):
         self.setObjectName('TransparentOverlay')
 
         rect = parent.rect()
-        rect.adjust(50, 50, -50, -50)
+        #rect.adjust(10, 10, -10, -10)
         self.setGeometry(rect)
 
         if timeout is not None:

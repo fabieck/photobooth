@@ -30,7 +30,6 @@ QPushButton:pressed {
 /* Idle Screen */
 
 QFrame#IdleMessage {
-    background-image: url(photobooth/gui/Qt5Gui/images/arrow-800x600.png);
     background-repeat: no-repeat;
     padding: 80px 40px 60px 40px;
 }
@@ -41,9 +40,18 @@ QFrame#IdleMessage QLabel {
 }
 
 QFrame#IdleMessage QPushButton {
-    color: rgba(255, 27, 0, 200);
+    background-color:  rgba(255, 27, 0, 200);
+    border-color: rgba(255, 27, 0, 200);
+    width: 40%;
+    height: 200px;
+    border-radius: 150px;
     font-size: 120px;
-    text-align: center;
+    margin-left: 320px;
+    margin-right: 320px;
+    margin-bottom: 200px;
+
+    padding: 10px;
+
 }
 
 QFrame#IdleMessage QPushButton:pressed {
@@ -125,12 +133,13 @@ QFrame#PictureMessage {
 /* Overlay message */
 
 QWidget#TransparentOverlay {
-    background-color: #aaeeeeee;
+    background: #ffffff qlineargradient(x1:0 y1:1, x2:1, y2:0, stop:0 rgba(255,165,150,255), stop:1 rgba(0,228,255,112));
+    color: #33eeeeee;
     border-style: outset;
     border-width: 2px;
-    border-radius: 30px;
-    border-color: #eeeeee;
-    color: #333333;
+    /*border-radius: 30px;*/
+    border-color: #33eeeeee;
+    color: #33eeeeee;
     padding: 40px;
 }
 
@@ -145,7 +154,6 @@ QWidget#PostprocessMessage QLabel {
 QWidget#PostprocessMessage QPushButton {
     color: #333333;
     border-color: #333333;
-    background-color: #cceeeeee;
     margin: 20px;
 }
 
@@ -154,9 +162,9 @@ QWidget#PostprocessMessage QPushButton:pressed {
 }
 
 QWidget#PostprocessMessage QPushButton:disabled {
-    background-color: #33eeeeee;
-    color: #11eeeeee;
-    border-color: #11eeeeee;
+    background-color: #66eeeeee;
+    color: #33eeeeee;
+    border-color: #33eeeeee;
 }
 
 /* Customizing settings */

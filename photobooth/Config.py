@@ -45,12 +45,12 @@ class Config:
     def defaults(self):
 
         filename = os.path.join(os.path.dirname(__file__), 'defaults.cfg')
-        logging.info('Reading config file "%s"', filename)
+        #logging.info('Reading config file "%s"', filename)
         self._cfg.read(filename)
 
     def read(self):
 
-        logging.info('Reading config file "%s"', self._filename)
+        #logging.info('Reading config file "%s"', self._filename)
         self._cfg.read(self._filename)
 
     def write(self):
@@ -74,13 +74,6 @@ class Config:
     def getBool(self, section, key):
 
         return self._cfg.getboolean(section, key)
-
-    def getIntList(self, section, key):
-
-        if len(self._cfg[section][key].strip()) > 0:
-            return [int(i) for i in self._cfg[section][key].split(',')]
-        else:
-            return []
 
     def set(self, section, key, value):
 

@@ -42,9 +42,9 @@ class GuiPostprocessor:
                 self._do_task_list.append(
                     PrintPostprocess(module, paper_size, pdf))
 
-    def get(self, picture):
+    def get(self, picture, _comm):
 
-        return [task.get(picture) for task in self._get_task_list]
+        return [task.get(picture, _comm) for task in self._get_task_list]
 
     def do(self, picture):
 
@@ -86,11 +86,14 @@ class PostprocessItem:
 
     @property
     def action(self):
+        print("button click2")
+        print(self._action)
 
         return self._action
 
     @action.setter
     def action(self, action):
+        print("button click1")
 
         if not callable(action):
             raise TypeError('Action must be callable')
@@ -107,6 +110,5 @@ class PrintPostprocess(PostprocessTask):
         Printer = lookup_and_import(printer.modules, printer_module, 'printer')
         self._printer = Printer(paper_size, is_pdf)
 
-    def get(self, picture):
-
-        return PostprocessItem('Print', lambda: self._printer.print(picture))
+    def get(self, picture, _comm):
+        return PostprocessItem('Drucken', lambda: self._printer.print(picture, _comm))

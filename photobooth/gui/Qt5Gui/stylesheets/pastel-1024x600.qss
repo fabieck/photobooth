@@ -4,7 +4,9 @@ QWidget {
     background-color: transparent;
     color: #eeeeee;
     font-family: AmaticSC, sans-serif;
-    font-size: 50px;
+    font-size: 60px;
+
+
 }
 
 QMainWindow {
@@ -15,12 +17,15 @@ QMainWindow {
 /* General controls */
 
 QPushButton {
-    background-color: transparent;
+    background-color:  transparent;
     border-style: outset;
-    border-width: 1px;
-    border-radius: 15px;
-    border-color: #eeeeee;
+    border-width: 3px;
+    border-radius: 16px;
+    margin: 20px;
     padding: 10px;
+    border-color: #eeeeee;
+    font-size: 50px;
+
 }
 
 QPushButton:pressed {
@@ -29,11 +34,7 @@ QPushButton:pressed {
 
 /* Idle Screen */
 
-QFrame#IdleMessage {
-    background-image: url(photobooth/gui/Qt5Gui/images/arrow-1024x600.png);
-    background-repeat: no-repeat;
-    padding: 80px 400px 120px 80px;
-}
+
 
 QFrame#IdleMessage QLabel {
     font-size: 160px;
@@ -41,10 +42,21 @@ QFrame#IdleMessage QLabel {
 }
 
 QFrame#IdleMessage QPushButton {
-    border: none;
-    color: rgba(255, 27, 0, 200);
-    font-size: 200px;
-    text-align: center;
+    background-color:  rgba(255, 27, 0, 200);
+    border-color: rgba(255, 27, 0, 200);
+    width: 50%;
+    height: 380px;
+    border-radius: 180px;
+    font-size: 150px;
+    margin-left: 420px;
+    margin-right: 420px;
+    margin-bottom: 200px;
+
+    padding: 10px;
+
+
+
+
 }
 
 QFrame#IdleMessage QPushButton:pressed {
@@ -146,7 +158,6 @@ QWidget#PostprocessMessage QLabel {
 QWidget#PostprocessMessage QPushButton {
     color: #333333;
     border-color: #333333;
-    background-color: #cceeeeee;
     margin: 20px;
 }
 
@@ -155,9 +166,9 @@ QWidget#PostprocessMessage QPushButton:pressed {
 }
 
 QWidget#PostprocessMessage QPushButton:disabled {
-    background-color: #33eeeeee;
-    color: #11eeeeee;
-    border-color: #11eeeeee;
+    background-color: #66eeeeee;
+    color: #33eeeeee;
+    border-color: #33eeeeee;
 }
 
 /* Customizing settings */

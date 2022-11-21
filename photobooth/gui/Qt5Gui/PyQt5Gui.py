@@ -19,6 +19,7 @@
 
 import logging
 import os
+import subprocess
 
 from PyQt5 import QtCore
 from PyQt5 import QtGui
@@ -26,6 +27,7 @@ from PyQt5 import QtWidgets
 
 from PIL import Image, ImageQt
 
+from ...Config import Config
 from ...StateMachine import GuiEvent, TeardownEvent
 from ...Threading import Workers
 
@@ -82,6 +84,7 @@ class PyQt5Gui(GuiSkeleton):
             self._fonts.addApplicationFont(font)
 
     def _initReceiver(self):
+
 
         # Create receiver thread
         self._receiver = Receiver.Receiver(self._comm)
@@ -157,6 +160,28 @@ class PyQt5Gui(GuiSkeleton):
         if QtWidgets.QApplication.overrideCursor() != 0:
             QtWidgets.QApplication.restoreOverrideCursor()
 
+    def showFormatSelection(self, state):
+
+        self._disableTrigger()
+        self._disableEscape()
+        self._setWidget(Frames.FormatSelection(
+            lambda: self._comm.send(Workers.MASTER, GuiEvent('start')), self._cfg, lambda: self._comm.send(Workers.MASTER, GuiEvent('grau'))))
+        if QtWidgets.QApplication.overrideCursor() != 0:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        if self._cfg.getBool('Gui', 'hide_cursor'):
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.BlankCursor)
+
+    def showFormatSelectionGrau(self, state):
+
+        self._disableTrigger()
+        self._disableEscape()
+        self._setWidget(Frames.FormatSelectionGrau(
+            lambda: self._comm.send(Workers.MASTER, GuiEvent('start')), self._cfg, lambda: self._comm.send(Workers.MASTER, GuiEvent('farbe'))))
+        if QtWidgets.QApplication.overrideCursor() != 0:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        if self._cfg.getBool('Gui', 'hide_cursor'):
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.BlankCursor)
+
     def showStartup(self, state):
 
         self._disableTrigger()
@@ -179,12 +204,11 @@ class PyQt5Gui(GuiSkeleton):
 
         num_pic = (self._cfg.getInt('Picture', 'num_x'),
                    self._cfg.getInt('Picture', 'num_y'))
-        skip = [i for i in self._cfg.getIntList('Picture', 'skip')
-                if 1 <= i and i <= num_pic[0] * num_pic[1]]
+        skip_last = self._cfg.getBool('Picture', 'skip_last')
         greeter_time = self._cfg.getInt('Photobooth', 'greeter_time') * 1000
 
         self._setWidget(Frames.GreeterMessage(
-            *num_pic, skip,
+            *num_pic, skip_last,
             lambda: self._comm.send(Workers.MASTER, GuiEvent('countdown'))))
         QtCore.QTimer.singleShot(
             greeter_time,
@@ -200,6 +224,10 @@ class PyQt5Gui(GuiSkeleton):
     def updateCountdown(self, event):
 
         picture = Image.open(event.picture)
+        config = Config('photobooth.cfg')
+        grayscale = config.getInt('Picture', 'picture_grayscale')
+        if(grayscale == 1):
+            picture = picture.convert("L")
         self._gui.centralWidget().picture = ImageQt.ImageQt(picture)
         self._gui.centralWidget().update()
 
@@ -207,35 +235,57 @@ class PyQt5Gui(GuiSkeleton):
 
         num_pic = (self._cfg.getInt('Picture', 'num_x'),
                    self._cfg.getInt('Picture', 'num_y'))
-        skip = [i for i in self._cfg.getIntList('Picture', 'skip')
-                if 1 <= i and i <= num_pic[0] * num_pic[1]]
+        skip_last = self._cfg.getBool('Picture', 'skip_last')
         self._setWidget(Frames.CaptureMessage(state.num_picture, *num_pic,
-                                              skip))
+                                              skip_last))
 
     def showAssemble(self, state):
+        #x = subprocess.Popen(["python3", "/Users/fabianeckert/git/photobooth/photobooth/gui/Qt5Gui/test.py"])
 
         self._setWidget(Frames.WaitMessage(_('Processing picture...')))
 
     def showReview(self, state):
-
-        picture = Image.open(state.picture)
+        config = Config('photobooth.cfg')
+        grayscale = config.getInt('Picture', 'picture_grayscale')
+        picture_main, pic_list = state.picture
+        picture = Image.open(picture_main)
         self._picture = ImageQt.ImageQt(picture)
+        self._picture_single = []
+        if (len(pic_list) > 2):
+            for i in range(0,len(pic_list)):
+                single_picture = Image.open(pic_list[i]).convert('RGB')
+                self._picture_single.append(ImageQt.ImageQt(single_picture))
+
         review_time = self._cfg.getInt('Photobooth', 'display_time') * 1000
-        self._setWidget(Frames.PictureMessage(self._picture))
-        QtCore.QTimer.singleShot(
-            review_time,
-            lambda: self._comm.send(Workers.MASTER, GuiEvent('postprocess')))
+        tasks = self._postprocess.get(self._picture, self._comm)
+        postproc_t = self._cfg.getInt('Photobooth', 'postprocess_time')
+        self._setWidget(Frames.PictureMessage(self._picture, self._picture_single, tasks, self._worker, state.just_printed,
+            lambda: self._comm.send(Workers.MASTER, GuiEvent('idle')), lambda: self._comm.send(Workers.MASTER, GuiEvent('download')),
+            postproc_t * 1000))
+        #QtCore.QTimer.singleShot(
+       #     review_time,
+        #    lambda: self._comm.send(Workers.MASTER, GuiEvent('postprocess')))
         self._postprocess.do(self._picture)
 
-    def showPostprocess(self, state):
-
-        tasks = self._postprocess.get(self._picture)
+    def showDownload(self, state):
         postproc_t = self._cfg.getInt('Photobooth', 'postprocess_time')
+        self._setWidget(Frames.DownloadPictureMessage(state.num_picture, lambda: self._comm.send(Workers.MASTER, GuiEvent('review')),
+            postproc_t * 1000))
 
-        Frames.PostprocessMessage(
-            self._gui.centralWidget(), tasks, self._worker,
-            lambda: self._comm.send(Workers.MASTER, GuiEvent('idle')),
-            postproc_t * 1000)
+
+    def showPrinting(self, state):
+        self._setWidget(Frames.WaitMessage(_('Bild wird gedruckt...')))
+
+    def showPrintingNoPaper(self, state):
+
+        self._setWidget(Frames.PrintNoPaper(lambda: self._comm.send(Workers.MASTER, GuiEvent('review'))))
+
+
+    def showPrinterNoConnection(self, state):
+
+        self._setWidget(Frames.PrintNoConMessage(_('Drucker hat ein Problem oder kann nicht gefunden werden :(')))
+
+
 
     def _handleKeypressEvent(self, event):
 
@@ -280,6 +330,7 @@ class PyQt5MainWindow(QtWidgets.QMainWindow):
 
         if self._cfg.getBool('Gui', 'fullscreen'):
             self.showFullScreen()
+            #self.showMaximized()
         else:
             self.setFixedSize(self._cfg.getInt('Gui', 'width'),
                               self._cfg.getInt('Gui', 'height'))

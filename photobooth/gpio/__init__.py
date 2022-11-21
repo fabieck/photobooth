@@ -85,8 +85,8 @@ class Gpio:
             self.showAssemble()
         elif isinstance(state, StateMachine.ReviewState):
             self.showReview()
-        elif isinstance(state, StateMachine.PostprocessState):
-            self.showPostprocess()
+       # elif isinstance(state, StateMachine.PostprocessState):
+         #   self.showPostprocess()
         elif isinstance(state, StateMachine.TeardownState):
             self.teardown(state)
 
@@ -126,9 +126,7 @@ class Gpio:
 
         if self._is_enabled:
             self._gpio.rgbBlink(self._rgb, 0.5, 0.5, 0.1, 0.1, (1, 0, 0),
-                                (0, 0, 0), None)  # self._countdown_time)
-            # Note: blinking forever instead of countdown_time to overcome
-            # the issue of too slow preview
+                                (0, 0, 0), self._countdown_time)
 
     def trigger(self):
 
@@ -228,7 +226,7 @@ class Entities:
         try:
             led = self.RGBLED(*bcm_pins)
             for l in led._leds:
-                l.frequency = 3000
+                l.frequency = 140
             self._rgb.append(led)
             return len(self._rgb) - 1
         except self.GPIOPinInUse:

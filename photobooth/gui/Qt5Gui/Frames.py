@@ -21,10 +21,20 @@ import logging
 import os
 import subprocess
 import sys
+import threading
+import socket
+
 
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets
+from PyQt5.QtGui import QPainter, QColor, QFont
+
+from ...Config import Config
+
+
+from PIL import Image
+from PIL.ImageQt import ImageQt
 
 from .. import modules
 from ... import camera
@@ -32,23 +42,33 @@ from ... import printer
 
 from . import Widgets
 from . import styles
+from . import QrCodeWebserver
+from . import WebServerThread
+#from . import test
+import time
+
+class ClickLabel(QtWidgets.QLabel):
+    clicked = QtCore.pyqtSignal()
+
+    def mousePressEvent(self, event):
+        self.clicked.emit()
 
 
 class Welcome(QtWidgets.QFrame):
 
-    def __init__(self, start_action, set_date_action, settings_action,
+    def __init__(self, start_photobooth, set_date_action, settings_action,
                  exit_action):
 
         super().__init__()
 
-        self.initFrame(start_action, set_date_action, settings_action,
+        self.initFrame(start_photobooth, set_date_action, settings_action,
                        exit_action)
 
-    def initFrame(self, start_action, set_date_action, settings_action,
+    def initFrame(self, start_photobooth, set_date_action, settings_action,
                   exit_action):
 
         btnStart = QtWidgets.QPushButton(_('Start photobooth'))
-        btnStart.clicked.connect(start_action)
+        btnStart.clicked.connect(start_photobooth)
 
         btnSetDate = QtWidgets.QPushButton(_('Set date/time'))
         btnSetDate.clicked.connect(set_date_action)
@@ -67,14 +87,234 @@ class Welcome(QtWidgets.QFrame):
 
         title = QtWidgets.QLabel(_('photobooth'))
 
-        url = 'https://github.com/reuterbal/photobooth'
-        link = QtWidgets.QLabel('<a href="{0}">{0}</a>'.format(url))
-
         lay = QtWidgets.QVBoxLayout()
         lay.addWidget(title)
         lay.addLayout(btnLay)
-        lay.addWidget(link)
         self.setLayout(lay)
+
+
+class FormatSelection(QtWidgets.QFrame):
+
+    def __init__(self, start_action, config, grau):
+        super().__init__()
+        self.grayscale = False
+        self._cfg = config
+        self._cfg.set('Picture', 'picture_grayscale', '0')
+        self._cfg.write()
+        self.initFrame(start_action, config, grau)
+
+    def initFrame(self, start_action, config, grau):
+
+        ### Format Pictures
+        # Single Frame
+        im = Image.open("screenshots/ape_single_quer.jpeg")
+
+        if(self.grayscale == True):
+            im = im.convert('L')
+        else:
+
+            im = im.convert('RGBA')
+
+
+        qimage = ImageQt(im)
+        pixmap= QtGui.QPixmap.fromImage(qimage)
+        t = QtGui.QTransform()
+        t.rotate(-10)
+        pixmap5 = pixmap.scaled(450, 300).transformed(t)
+        lbl_single = ClickLabel()
+        lbl_single.setPixmap(pixmap5)
+        lbl_single.setAlignment(QtCore.Qt.AlignHCenter)
+        lbl_single.clicked.connect(lambda: self.SinglePicture(start_action))
+
+        #Three Frames
+        im = Image.open("screenshots/ape_strip.jpeg")
+        if(self.grayscale == True):
+            im = im.convert('L')
+        else:
+            im = im.convert('RGBA')
+        qimage = ImageQt(im)
+        pixmap= QtGui.QPixmap.fromImage(qimage)
+        t = QtGui.QTransform()
+        t.rotate(10)
+        pixmap5 = pixmap.scaled(150, 450).transformed(t)
+        lbl_multi = ClickLabel()
+        lbl_multi.setPixmap(pixmap5)
+        text1 = QtWidgets.QLabel(_('        oder'))
+        text2 = QtWidgets.QLabel(_(' '))
+        text3 = QtWidgets.QLabel(_(' '))
+
+        lbl_multi.setAlignment(QtCore.Qt.AlignHCenter)
+        lbl_multi.clicked.connect(lambda: self.MultiPicture(start_action))
+
+        ##add Widget Picture choose
+        picLay = QtWidgets.QHBoxLayout()
+        picLay.addWidget(text2)
+        picLay.addWidget(lbl_single)
+        picLay.addWidget(text1)
+        picLay.addWidget(lbl_multi)
+        picLay.addWidget(text3)
+
+
+
+        ###Button Color or Black and White
+        btnColor = QtWidgets.QPushButton(_('Farbe'))
+        text_or = QtWidgets.QLabel(_('                     oder'))
+
+        btnBlackWhite = QtWidgets.QPushButton(_('Schwarz/Weiß'))
+        btnBlackWhite.clicked.connect(grau)
+        title = QtWidgets.QLabel(_(' '))
+        title_color = QtWidgets.QLabel(_('1. Farbe oder schwarz/weiß?'))
+        title_format = QtWidgets.QLabel(_('2. Einzelfoto oder Fotostreifen? '))
+
+        title_empty = QtWidgets.QLabel(_(' '))
+
+        ##add Button Picture choose
+
+        btnLay = QtWidgets.QHBoxLayout()
+        btnLay.addWidget(btnColor)
+        btnLay.addWidget(text_or)
+        btnLay.addWidget(btnBlackWhite)
+
+        lay = QtWidgets.QVBoxLayout()
+        lay.addWidget(title_color)
+        lay.addLayout(btnLay)
+        lay.addWidget(title_format)
+        lay.addLayout(picLay)
+        lay.addWidget(title)
+
+        self.setLayout(lay)
+
+
+    def SinglePicture(self, start_action):
+        self._cfg.set('Picture', 'num_x', '1')
+        self._cfg.set('Picture', 'num_y', '1')
+        self._cfg.set('Picture', 'size_x', '6000') #3496
+        self._cfg.set('Picture', 'size_y', '4000') #2330
+        self._cfg.write()
+
+        start_action()
+
+    def MultiPicture(self, start_action):
+        self._cfg.set('Picture', 'num_x', '1')
+        self._cfg.set('Picture', 'num_y', '4')
+        self._cfg.set('Picture', 'size_x', '2000') #1165
+        self._cfg.set('Picture', 'size_y', '6000') #3496
+       # self._cfg.set('Picture', 'background', '/Users/fabianeckert/git/photobooth/laura_u_patrick_resized.png')
+        self._cfg.write()
+
+        start_action()
+
+
+class FormatSelectionGrau(QtWidgets.QFrame):
+
+    def __init__(self, start_action, config, farbe):
+        super().__init__()
+        self.grayscale = True
+        self._cfg = config
+        self._cfg.set('Picture', 'picture_grayscale', '1')
+        self._cfg.write()
+        self.initFrame(start_action, farbe)
+
+    def initFrame(self, start_action, farbe):
+
+        ### Format Pictures
+        # Single Frame
+        im = Image.open("screenshots/ape_single_quer.jpeg")
+
+        if(self.grayscale == True):
+            im = im.convert('L')
+        else:
+
+            im = im.convert('RGBA')
+
+
+        qimage = ImageQt(im)
+        pixmap= QtGui.QPixmap.fromImage(qimage)
+        t = QtGui.QTransform()
+        t.rotate(-10)
+        pixmap5 = pixmap.scaled(450, 300).transformed(t)
+        lbl_single = ClickLabel()
+        lbl_single.setPixmap(pixmap5)
+        lbl_single.setAlignment(QtCore.Qt.AlignHCenter)
+        lbl_single.clicked.connect(lambda: self.SinglePicture(start_action))
+
+        #Three Frames
+        im = Image.open("screenshots/ape_strip.jpeg")
+        if(self.grayscale == True):
+            im = im.convert('L')
+        else:
+            im = im.convert('RGBA')
+        qimage = ImageQt(im)
+        pixmap= QtGui.QPixmap.fromImage(qimage)
+        t = QtGui.QTransform()
+        t.rotate(10)
+        pixmap5 = pixmap.scaled(150, 450).transformed(t)
+        lbl_multi = ClickLabel()
+        lbl_multi.setPixmap(pixmap5)
+        lbl_multi.setAlignment(QtCore.Qt.AlignHCenter)
+        lbl_multi.clicked.connect(lambda: self.MultiPicture(start_action))
+        text1 = QtWidgets.QLabel(_('        oder'))
+        text2 = QtWidgets.QLabel(_(' '))
+        text3 = QtWidgets.QLabel(_(' '))
+
+
+        title = QtWidgets.QLabel(_('Entscheide erst zwischen Farbe oder Schwarz-Weiß und drücke dann auf dein bevorzugtes Format'))
+        title_color = QtWidgets.QLabel(_('1. Farbe oder schwarz/weiß?'))
+        title_format = QtWidgets.QLabel(_('2. Einzelfoto oder Fotostreifen? '))
+        title_empty = QtWidgets.QLabel(_(' '))
+
+
+        ##add Widget Picture choose
+        picLay = QtWidgets.QHBoxLayout()
+        picLay.addWidget(text2)
+        picLay.addWidget(lbl_single)
+        picLay.addWidget(text1)
+        picLay.addWidget(lbl_multi)
+        picLay.addWidget(text3)
+
+
+        ###Button Color or Black and White
+        btnColor = QtWidgets.QPushButton(_('Farbe'))
+        btnColor.clicked.connect(farbe)
+        text_or = QtWidgets.QLabel(_('                     oder'))
+        btnBlackWhite = QtWidgets.QPushButton(_('Schwarz/Weiß'))
+        #btnBlackWhite.clicked.connect(lambda: self.bwPhotos(start_action))
+
+        ##add Button Picture choose
+
+        btnLay = QtWidgets.QHBoxLayout()
+        btnLay.addWidget(btnColor)
+        btnLay.addWidget(text_or)
+        btnLay.addWidget(btnBlackWhite)
+
+        lay = QtWidgets.QVBoxLayout()
+        lay.addWidget(title_color)
+        lay.addLayout(btnLay)
+        lay.addWidget(title_format)
+        lay.addLayout(picLay)
+        lay.addWidget(title_empty)
+        self.setLayout(lay)
+
+    def SinglePicture(self, start_action):
+        self._cfg.set('Picture', 'num_x', '1')
+        self._cfg.set('Picture', 'num_y', '1')
+        self._cfg.set('Picture', 'size_x', '6000')
+        self._cfg.set('Picture', 'size_y', '2000')
+        #self._cfg.set('Picture', 'background', '')
+        self._cfg.write()
+
+        start_action()
+
+    def MultiPicture(self, start_action):
+        self._cfg.set('Picture', 'num_x', '1')
+        self._cfg.set('Picture', 'num_y', '4')
+        self._cfg.set('Picture', 'size_x', '2000')
+        self._cfg.set('Picture', 'size_y', '6000')
+        #self._cfg.set('Picture', 'background', 'fotosreifen_hannah_daniel_mit_logo.png')
+        self._cfg.write()
+
+        start_action()
+
 
 
 class IdleMessage(QtWidgets.QFrame):
@@ -84,13 +324,13 @@ class IdleMessage(QtWidgets.QFrame):
         super().__init__()
         self.setObjectName('IdleMessage')
 
-        self._message_label = _('Hit the')
-        self._message_button = _('Button!')
+        self._message_label = _('Countdown')
+        self._message_button = _('Starten!')
+
 
         self.initFrame(trigger_action)
 
     def initFrame(self, trigger_action):
-
         lbl = QtWidgets.QLabel(self._message_label)
         btn = QtWidgets.QPushButton(self._message_button)
         btn.clicked.connect(trigger_action)
@@ -98,20 +338,22 @@ class IdleMessage(QtWidgets.QFrame):
         lay = QtWidgets.QVBoxLayout()
         lay.addWidget(lbl)
         lay.addWidget(btn)
+       # lay.addWidget(countdown_text)
+
         self.setLayout(lay)
 
 
 class GreeterMessage(QtWidgets.QFrame):
 
-    def __init__(self, num_x, num_y, skip, countdown_action):
+    def __init__(self, num_x, num_y, skip_last, countdown_action):
 
         super().__init__()
         self.setObjectName('GreeterMessage')
 
         self._text_title = _('Get ready!')
-        self._text_button = _('Start countdown')
+        self._text_button = _('Countdown startet')
 
-        num_pictures = max(num_x * num_y - len(skip), 1)
+        num_pictures = max(num_x * num_y - int(skip_last), 1)
         if num_pictures > 1:
             self._text_label = _('for {} pictures...').format(num_pictures)
         else:
@@ -138,17 +380,17 @@ class GreeterMessage(QtWidgets.QFrame):
 
 class CaptureMessage(QtWidgets.QFrame):
 
-    def __init__(self, num_picture, num_x, num_y, skip):
+    def __init__(self, num_picture, num_x, num_y, skip_last):
 
         super().__init__()
         self.setObjectName('PoseMessage')
 
-        num_pictures = max(num_x * num_y - len(skip), 1)
+        num_pictures = max(num_x * num_y - int(skip_last), 1)
         if num_pictures > 1:
             self._text = _('Picture {} of {}...').format(num_picture,
                                                          num_pictures)
         else:
-            self._text = 'Taking a photo...'
+            self._text = 'Cheeeeese...'
 
         self.initFrame()
 
@@ -159,35 +401,173 @@ class CaptureMessage(QtWidgets.QFrame):
         lay.addWidget(lbl)
         self.setLayout(lay)
 
-
+#Final Screen
 class PictureMessage(QtWidgets.QFrame):
 
-    def __init__(self, picture):
-
+    def __init__(self, picture, single_picture, tasks, worker, just_printed, idle_handle, download_handle,
+                     timeout=None, timeout_handle=None):
+        if timeout_handle is None:
+            timeout_handle = idle_handle
         super().__init__()
-        self.setObjectName('PictureMessage')
+        #TODO: play video wie papier nachglegt wird
 
+        if timeout is not None:
+            self._handle = timeout_handle
+            self._timer = self.startTimer(timeout)
+
+        self.setObjectName('PictureMessage')
         self._picture = picture
+        self._single_picture = single_picture
+        self.selected_picture = 0 # init display first picture
+
+        self.initFrame(tasks, idle_handle, worker, download_handle, just_printed)
+        if timeout is not None:
+            self._handle = timeout_handle
+            self._timer = self.startTimer(timeout)
+
+        self.mulitple_pics = False
+        if (len(self._single_picture) > 0):
+            self.mulitple_pics = True
+            pic_web_width = "400"
+            pic_web_height = "1200"
+        else:
+            pic_web_width = "900"
+            pic_web_height = "600"
+        # img_qr, port_number, hash_num = QrCodeWebserver.qr_generator()
+        # #qr webserver pic
+        # self.qr_pic = ImageQt(img_qr)
+        # #qr network pic
+        # img_qr_nt = Image.open('qr-code-4.png')
+        # self.network_qr_pic = ImageQt(img_qr_nt)
+        # #img.show()
+        # thread4hz = threading.Thread(target=WebServerThread.start_web,
+        #                              kwargs=dict(p_number=port_number, hash_num=hash_num,
+        #                                          pic_web_width=pic_web_width, pic_web_height=pic_web_height))
+        # thread4hz.start()
+
 
     def _paintPicture(self, painter):
 
         if isinstance(self._picture, QtGui.QImage):
+            # pic_qr = QtGui.QPixmap.fromImage(self.qr_pic)
+            # pic_network_qr = QtGui.QPixmap.fromImage(self.network_qr_pic)
             pix = QtGui.QPixmap.fromImage(self._picture)
+
+            pix_single = []
+            if(self.mulitple_pics):
+                for i in range(0,len(self._single_picture)):
+                    pix_single.append(QtGui.QPixmap.fromImage(self._single_picture[i]))
         else:
             pix = QtGui.QPixmap(self._picture)
+
         pix = pix.scaled(self.contentsRect().size(), QtCore.Qt.KeepAspectRatio,
                          QtCore.Qt.SmoothTransformation)
 
-        origin = ((self.width() - pix.width()) // 2,
-                  (self.height() - pix.height()) // 2)
-        painter.drawPixmap(QtCore.QPoint(*origin), pix)
+        #origin = ((self.width() - pix.width()) // 2,
+         #         (self.height() - pix.height()) // 2)
+        #qr code paint
+        # origin = (920,35)
+        # painter.setFont(QFont('Decorative', 18))
+        # painter.drawText(QtCore.QPoint(*origin), "1. Verbinde dich mit der Fotobox")
+        # origin = (1020, 60)
+        # pic_network_qr = pic_network_qr.scaled(140, 140)
+        # painter.drawPixmap(QtCore.QPoint(*origin), pic_network_qr)
+        # origin = (920, 270)
+        # painter.drawText(QtCore.QPoint(*origin), "2. Lade das Bild runter")
+        # origin = (1020, 295)
+        # qr_picture = pic_qr.scaled(140, 140)
+        # painter.drawPixmap(QtCore.QPoint(*origin), qr_picture)
+
+        #pictures
+        self.small_pix_height = 100
+        self.small_pix_width = 150
+        self.vertical_pixel = []
+        self.horizontal_pixel = []
+        if(self.mulitple_pics):
+            origin= (20,20)
+            single_pix = pix_single[self.selected_picture].scaled(600,400)
+            painter.drawPixmap(QtCore.QPoint(*origin), single_pix)
+
+            #small pics
+            for i in range(0,len(self._single_picture)):
+                self.vertical_pixel.append(40 + 200 * i)
+                self.horizontal_pixel.append(500)
+                origin = (self.vertical_pixel[i], self.horizontal_pixel[i])
+                single_pix = pix_single[i].scaled(self.small_pix_width, self.small_pix_height)
+                painter.drawPixmap(QtCore.QPoint(*origin), single_pix)
+
+            origin = (670, 20)
+            main_pix = pix.scaled(200, 600)
+            painter.drawPixmap(QtCore.QPoint(*origin), main_pix)
+
+
+        else:
+            origin= (20,20)
+            main_pix = pix.scaled(800,533)
+            painter.drawPixmap(QtCore.QPoint(*origin), main_pix)
+
+    #to display photo in big
+    def mousePressEvent(self, QMouseEvent):
+        self.vertikal_click_pixel = QMouseEvent.pos().x()
+        self.horizontal_click_pixel = QMouseEvent.pos().y()
+        #print(self.vertikal_click_pixel, self.horizontal_click_pixel)
+        if (self.mulitple_pics):
+            for i in range(0, len(self._single_picture)):
+                if(self.vertical_pixel[i] <= self.vertikal_click_pixel <= self.vertical_pixel[i] + self.small_pix_width):
+                    if(self.horizontal_pixel[i] <= self.horizontal_click_pixel <= self.horizontal_pixel[i] + self.small_pix_height):
+                        #print("click photo: ", i)
+                        self.selected_picture = i
+                        self.update()
 
     def paintEvent(self, event):
 
         painter = QtGui.QPainter(self)
         self._paintPicture(painter)
-        painter.end()
+        #painter.end()
 
+
+    def initFrame(self, tasks, idle_handle, worker, download_handle, just_printed):
+
+        def disableAndCall(button, handle):
+            button.setEnabled(False)
+            button.update()
+            worker.put(handle)
+
+        def createButton(task):
+            button = QtWidgets.QPushButton(task.label)
+            button.clicked.connect(lambda: disableAndCall(button, task.action))
+            return button
+        print("just_printed: ", just_printed)
+        if(just_printed):
+            tasks = []
+        buttons = [createButton(task) for task in tasks]
+        buttons_download = (QtWidgets.QPushButton(_('Foto aufs Handy')))
+        buttons_download.clicked.connect(download_handle)
+        buttons_restart = (QtWidgets.QPushButton(_('Start over')))
+        buttons_restart.clicked.connect(idle_handle)
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addStretch(1)
+        vbox.addWidget(buttons_download)
+        for i, button in enumerate(buttons):
+            #pos = divmod(i, 2)
+            vbox.addWidget(button)
+        vbox.addWidget(buttons_restart)
+
+        hbox = QtWidgets.QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addLayout(vbox)
+
+        self.setLayout(hbox)
+
+        #self.setGeometry(300, 300, 300, 350)
+        self.show()
+
+
+    def timerEvent(self, event):
+
+        self.killTimer(self._timer)
+        self._handle()
 
 class WaitMessage(QtWidgets.QFrame):
 
@@ -196,10 +576,12 @@ class WaitMessage(QtWidgets.QFrame):
         super().__init__()
         self.setObjectName('WaitMessage')
 
+        #x = subprocess.Popen(["python3", "/Users/fabianeckert/git/photobooth/photobooth/gui/Qt5Gui/test.py"])
+
         self._text = message
         self._clock = Widgets.SpinningWaitClock()
-
         self.initFrame()
+
 
     def initFrame(self):
 
@@ -226,15 +608,329 @@ class WaitMessage(QtWidgets.QFrame):
         self._clock.render(painter, QtCore.QPoint(*offset),
                            self._clock.visibleRegion(),
                            QtWidgets.QWidget.DrawChildren)
+
+
         painter.end()
 
+class DownloadPictureMessage(QtWidgets.QFrame):
+
+    def __init__(self, num_picture, review_handle, timeout=None, timeout_handle=None):
+        if timeout_handle is None:
+            timeout_handle = review_handle
+        super().__init__()
+
+        if timeout is not None:
+            self._handle = timeout_handle
+            self._timer = self.startTimer(timeout)
+
+        print("Download photo init")
+        self.mulitple_pics = False
+        if (num_picture > 1):
+            self.mulitple_pics = True
+            pic_web_width = "400"
+            pic_web_height = "1200"
+        else:
+            pic_web_width = "900"
+            pic_web_height = "600"
+        #qr webserver pic
+        #img_qr, self.port_number, hash_num = QrCodeWebserver.qr_generator()
+        img_qr, self.port_number = QrCodeWebserver.qr_generator()
+
+        self.qr_pic = ImageQt(img_qr)
+        #qr network pic
+        img_qr_nt = Image.open('qr-code-4.png')
+        self.network_qr_pic = ImageQt(img_qr_nt)
+        #img.show()
+        hash_num = str(0);
+        thread4hz = threading.Thread(target=WebServerThread.start_web,
+                                     kwargs=dict(p_number=self.port_number, hash_num=hash_num,
+                                                 pic_web_width=pic_web_width, pic_web_height=pic_web_height))
+
+        thread4hz.start()
+        self.initFrame(review_handle)
+
+    def _paintPicture(self, painter):
+        pic_qr = QtGui.QPixmap.fromImage(self.qr_pic)
+        pic_network_qr = QtGui.QPixmap.fromImage(self.network_qr_pic)
+
+        #qr code paint
+        origin = (130,105)
+        painter.setFont(QFont('Decorative', 18))
+        painter.drawText(QtCore.QPoint(*origin), "1. Verbinde dich mit der Fotobox")
+        origin = (130,125)
+        painter.setFont(QFont('Decorative', 18))
+        painter.drawText(QtCore.QPoint(*origin), "    durch scannen des QR-Codes")
+        origin = (130,360)
+        painter.setFont(QFont('Decorative', 18))
+        painter.drawText(QtCore.QPoint(*origin), "oder verbinde dich manuell")
+        origin = (130,380)
+        painter.setFont(QFont('Decorative', 18))
+        painter.drawText(QtCore.QPoint(*origin), "mit dem Wlan: Fotobox")
+        origin = (230, 150)
+        pic_network_qr = pic_network_qr.scaled(140, 140)
+        painter.drawPixmap(QtCore.QPoint(*origin), pic_network_qr)
+        origin = (700, 105)
+        painter.drawText(QtCore.QPoint(*origin), "2. Lade das Bild runter")
+        origin = (830, 150)
+        qr_picture = pic_qr.scaled(140, 140)
+        painter.drawPixmap(QtCore.QPoint(*origin), qr_picture)
+        origin = (700, 360)
+        painter.drawText(QtCore.QPoint(*origin), "oder gib " + str(self.get_ip()) + ":" + str(self.port_number) + " in deinen Browser ein")
+
+    def get_ip(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # doesn't even have to be reachable
+            s.connect(('10.255.255.255', 1))
+            IP = s.getsockname()[0]
+        except:
+            IP = '10.42.0.1' ## check why this function doesn't work has to be '127.0.0.1'
+        finally:
+            s.close()
+        return IP
+
+    def paintEvent(self, event):
+
+        painter = QtGui.QPainter(self)
+        print("painter")
+        self._paintPicture(painter)
+        painter.end()
+
+    def initFrame(self, review_handle):
+
+
+        buttons_back_to_review = (QtWidgets.QPushButton(_('Zurück zum Foto')))
+        buttons_back_to_review.clicked.connect(review_handle)
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addStretch(1)
+        vbox.addWidget(buttons_back_to_review)
+
+        hbox = QtWidgets.QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addLayout(vbox)
+
+        self.setLayout(hbox)
+
+        #self.setGeometry(300, 300, 300, 350)
+        self.show()
+
+    def timerEvent(self, event):
+
+        self.killTimer(self._timer)
+        self._handle()
+
+class PrintNoConMessage(QtWidgets.QFrame):
+
+    def __init__(self, message):
+
+        super().__init__()
+        self.setObjectName('PrintNoConMessage')
+
+        #x = subprocess.Popen(["python3", "/Users/fabianeckert/git/photobooth/photobooth/gui/Qt5Gui/test.py"])
+
+        self._text = message
+        self._clock = Widgets.SpinningWaitClock()
+        self.initFrame()
+
+
+
+    def initFrame(self):
+
+        lbl = QtWidgets.QLabel(self._text)
+        lay = QtWidgets.QVBoxLayout()
+        lay.addWidget(lbl)
+        self.setLayout(lay)
+
+    def showEvent(self, event):
+
+        self.startTimer(100)
+
+    def timerEvent(self, event):
+
+        self._clock.value += 1
+        self.update()
+
+    def paintEvent(self, event):
+
+        offset = ((self.width() - self._clock.width()) // 2,
+                  (self.height() - self._clock.height()) // 2)
+
+        painter = QtGui.QPainter(self)
+        self._clock.render(painter, QtCore.QPoint(*offset),
+                           self._clock.visibleRegion(),
+                           QtWidgets.QWidget.DrawChildren)
+
+
+        painter.end()
+
+
+class PrintNoPaper(QtWidgets.QFrame):
+
+    def __init__(self, idle_handle):
+
+        super().__init__()
+        print("no paper init")
+        config = Config('photobooth.cfg')
+        self._cfg = config
+        printer_in_box = self._cfg.get('Printer', 'printer_in_box')
+        print("printer in box: ", printer_in_box )
+
+        #TODO: play video wie papier nachglegt wird
+        if(printer_in_box==True):
+            print("printer in box: ", printer_in_box)
+
+            print("is in box")
+            pic_instr1 = Image.open('printer_paper_instructions/print_instr1.jpg').resize((387,290),Image.ANTIALIAS)
+            pic_instr2 = Image.open('printer_paper_instructions/print_instr2.jpg').resize((387,290),Image.ANTIALIAS)
+            pic_instr3 = Image.open('printer_paper_instructions/print_instr3.jpg').resize((387,290),Image.ANTIALIAS)
+            pic_instr4 = Image.open('printer_paper_instructions/print_instr4.jpg').resize((387,290),Image.ANTIALIAS)
+        else:
+            print("is not in box")
+            pic_instr1 = Image.open('printer_paper_instructions/print_instr1_2.jpg').resize((387,290),Image.ANTIALIAS)
+            pic_instr2 = Image.open('printer_paper_instructions/print_instr2_2.PNG').resize((387,290),Image.ANTIALIAS)
+            pic_instr3 = Image.open('printer_paper_instructions/print_instr3_2.PNG').resize((387,290),Image.ANTIALIAS)
+            pic_instr4 = Image.open('printer_paper_instructions/print_instr4_2.PNG').resize((387,290),Image.ANTIALIAS)
+        a=ImageQt(pic_instr1)
+        b=ImageQt(pic_instr2)
+        c=ImageQt(pic_instr3)
+        d=ImageQt(pic_instr4)
+
+
+        self.pic_instr_conv1 = QtGui.QPixmap.fromImage(a)
+        self.pic_instr_conv2 = QtGui.QPixmap.fromImage(b)
+        self.pic_instr_conv3 = QtGui.QPixmap.fromImage(c)
+        self.pic_instr_conv4 = QtGui.QPixmap.fromImage(d)
+        self.setObjectName('PrinterPaperMessage')
+        self.i = 0
+
+
+        self.initFrame(idle_handle)
+
+    def _paintPicture(self, painter):
+
+      #  pic_instr = []
+     #   pic_instr.append(Image.open('printer_paper_instructions/print_instr1.jpg').resize((387,290),Image.ANTIALIAS))
+    #    pic_instr.append(Image.open('printer_paper_instructions/print_instr2.jpg').resize((387,290),Image.ANTIALIAS))
+    #    pic_instr.append(Image.open('printer_paper_instructions/print_instr3.jpg').resize((387,290),Image.ANTIALIAS))
+    #    pic_instr.append(Image.open('printer_paper_instructions/print_instr4.jpg').resize((387,290),Image.ANTIALIAS))
+
+
+
+        self.text_instructions = []
+        self.text_instructions.append("Es scheint kein Papier im Drucker zu sein!!!")
+        self.text_instructions.append("Nimm einen Stapel des Fotopapiers")
+        self.text_instructions.append("Klappe diese Leiste nach vorne")
+        self.text_instructions.append("Lege das Papier mit der Glatten Seite nach vorne")
+        self.text_instructions.append("Klappe die Leiste wieder zurück und drücke auf Fertig")
+
+        print("hallo")
+        self.pics_instruction = []
+     #   for i in range(0,4):
+      #      pic_instr_conv = ImageQt(pic_instr[i])
+       #     self.pics_instruction.append(QtGui.QPixmap.fromImage(pic_instr_conv))
+
+
+
+        print("bilder: ", self.pics_instruction)
+
+        #pictures
+        self.pix_height =290
+        self.pix_width = 387
+        self.vertical_pixel = []
+        self.horizontal_pixel = []
+        origin = (130, 40)
+        painter.setFont(QFont('Decorative', 40))
+        painter.setPen(QColor('white'))
+        painter.drawText(QtCore.QPoint(*origin), self.text_instructions[0])
+        painter.setPen(QColor('black'))
+
+        origin1 = (40, 70)
+
+
+        self.pic_instr_conv1 = self.pic_instr_conv1.scaled(self.pix_width, self.pix_height)
+        painter.drawPixmap(QtCore.QPoint(*origin1), self.pic_instr_conv1)
+
+        origin2 = (self.pix_width+160, 70)
+
+        self.pic_instr_conv2 = self.pic_instr_conv2.scaled(self.pix_width, self.pix_height)
+        painter.drawPixmap(QtCore.QPoint(*origin2), self.pic_instr_conv2)
+
+        origin3 = (40, self.pix_height + 70+35)
+        self.pic_instr_conv3 = self.pic_instr_conv3.scaled(self.pix_width, self.pix_height)
+        painter.drawPixmap(QtCore.QPoint(*origin3), self.pic_instr_conv3)
+
+        origin4 = (self.pix_width+160, self.pix_height + 70+35)
+
+        self.pic_instr_conv4 = self.pic_instr_conv4.scaled(self.pix_width, self.pix_height)
+        painter.drawPixmap(QtCore.QPoint(*origin4), self.pic_instr_conv4)
+
+        for i in range(0,2):
+            self.horizontal_pixel.append(40 + (self.pix_width + 120) * i)
+            self.vertical_pixel.append(70)
+            #origin = (self.horizontal_pixel[i], self.vertical_pixel[i])
+            #single_print_pic = self.pics_instruction[i].scaled(self.pix_width, self.pix_height)
+           # print("single_print_pic: ", single_print_pic, "i: ", i)
+
+           # painter.drawPixmap(QtCore.QPoint(*origin), single_print_pic)
+            origin = (self.horizontal_pixel[i], self.vertical_pixel[i]+self.pix_height+20)
+            painter.setFont(QFont('Decorative', 13))
+            painter.drawText(QtCore.QPoint(*origin), self.text_instructions[i+1])
+        for i in range(0,2):
+            self.horizontal_pixel.append(40 + (self.pix_width + 120) * i)
+            self.vertical_pixel.append(self.pix_height + 70+35)
+            origin = (self.horizontal_pixel[i+2], self.vertical_pixel[i+2])
+        #    single_print_pic = self.pics_instruction[i+2].scaled(self.pix_width, self.pix_height)
+           # print("single_print_pic: ", single_print_pic, "i: ", i+2)
+
+           # painter.drawPixmap(QtCore.QPoint(*origin), single_print_pic)
+            origin = (self.horizontal_pixel[i+2], self.vertical_pixel[i+2]+self.pix_height+20)
+            painter.setFont(QFont('Decorative', 13))
+            painter.drawText(QtCore.QPoint(*origin), self.text_instructions[i+3])
+
+
+
+
+
+    def paintEvent(self, event):
+
+        painter = QtGui.QPainter(self)
+        print("painter")
+        self._paintPicture(painter)
+        painter.end()
+
+
+    def initFrame(self, idle_handle):
+
+
+        buttons2 = (QtWidgets.QPushButton(_('Fertig')))
+        buttons2.clicked.connect(idle_handle)
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addStretch(1)
+        vbox.addWidget(buttons2)
+
+        hbox = QtWidgets.QHBoxLayout()
+        hbox.addStretch(1)
+        hbox.addLayout(vbox)
+
+        self.setLayout(hbox)
+
+        #self.setGeometry(300, 300, 300, 350)
+        self.show()
+
+
+   # def timerEvent(self, event):
+
+        #self.killTimer(self._timer)
+        #self._handle()
 
 class CountdownMessage(QtWidgets.QFrame):
 
     def __init__(self, time, action):
 
         super().__init__()
-        self.setObjectName('CountdownMessage')
+        #self.setObjectName('CountdownMessage') #uncomment means no background frame which is white
 
         self._step_size = 50
         self._value = time * (1000 // self._step_size)
@@ -291,7 +987,6 @@ class CountdownMessage(QtWidgets.QFrame):
             self.update()
 
     def paintEvent(self, event):
-
         painter = QtGui.QPainter(self)
 
         # background image
@@ -314,43 +1009,6 @@ class CountdownMessage(QtWidgets.QFrame):
         painter.end()
 
 
-class PostprocessMessage(Widgets.TransparentOverlay):
-
-    def __init__(self, parent, tasks, worker, idle_handle,
-                 timeout=None, timeout_handle=None):
-
-        if timeout_handle is None:
-            timeout_handle = idle_handle
-
-        super().__init__(parent, timeout, timeout_handle)
-        self.setObjectName('PostprocessMessage')
-        self.initFrame(tasks, idle_handle, worker)
-
-    def initFrame(self, tasks, idle_handle, worker):
-
-        def disableAndCall(button, handle):
-            button.setEnabled(False)
-            button.update()
-            worker.put(handle)
-
-        def createButton(task):
-            button = QtWidgets.QPushButton(task.label)
-            button.clicked.connect(lambda: disableAndCall(button, task.action))
-            return button
-
-        buttons = [createButton(task) for task in tasks]
-        buttons.append(QtWidgets.QPushButton(_('Start over')))
-        buttons[-1].clicked.connect(idle_handle)
-
-        button_lay = QtWidgets.QGridLayout()
-        for i, button in enumerate(buttons):
-            pos = divmod(i, 2)
-            button_lay.addWidget(button, *pos)
-
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(QtWidgets.QLabel(_('Happy?')))
-        layout.addLayout(button_lay)
-        self.setLayout(layout)
 
 
 class SetDateTime(QtWidgets.QFrame):
@@ -476,8 +1134,6 @@ class Settings(QtWidgets.QFrame):
         tabs.addTab(self.createStorageSettings(), _('Storage'))
         tabs.addTab(self.createGpioSettings(), _('GPIO'))
         tabs.addTab(self.createPrinterSettings(), _('Printer'))
-        tabs.addTab(self.createMailerSettings(), _('Mailer'))
-        tabs.addTab(self.createUploadSettings(), _('Upload'))
         return tabs
 
     def createButtons(self):
@@ -631,9 +1287,16 @@ class Settings(QtWidgets.QFrame):
 
         self.add('Camera', 'rotation', rotation)
 
+        automatic_mode = QtWidgets.QCheckBox()
+        automatic_mode.setChecked(self._cfg.getBool('Camera', 'auto_enable'))
+        self.add('Camera', 'auto_enable', automatic_mode)
+
+
         layout = QtWidgets.QFormLayout()
         layout.addRow(_('Camera module:'), module)
         layout.addRow(_('Camera rotation:'), rotation)
+        layout.addRow(_('Camera mode automatic:'), automatic_mode)
+
 
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
@@ -663,28 +1326,19 @@ class Settings(QtWidgets.QFrame):
         size_y.setValue(self._cfg.getInt('Picture', 'size_y'))
         self.add('Picture', 'size_y', size_y)
 
-        inner_dist_x = QtWidgets.QSpinBox()
-        inner_dist_x.setRange(0, 999999)
-        inner_dist_x.setValue(self._cfg.getInt('Picture', 'inner_dist_x'))
-        self.add('Picture', 'inner_dist_x', inner_dist_x)
+        min_dist_x = QtWidgets.QSpinBox()
+        min_dist_x.setRange(0, 999999)
+        min_dist_x.setValue(self._cfg.getInt('Picture', 'min_dist_x'))
+        self.add('Picture', 'min_dist_x', min_dist_x)
 
-        inner_dist_y = QtWidgets.QSpinBox()
-        inner_dist_y.setRange(0, 999999)
-        inner_dist_y.setValue(self._cfg.getInt('Picture', 'inner_dist_y'))
-        self.add('Picture', 'inner_dist_y', inner_dist_y)
+        min_dist_y = QtWidgets.QSpinBox()
+        min_dist_y.setRange(0, 999999)
+        min_dist_y.setValue(self._cfg.getInt('Picture', 'min_dist_y'))
+        self.add('Picture', 'min_dist_y', min_dist_y)
 
-        outer_dist_x = QtWidgets.QSpinBox()
-        outer_dist_x.setRange(0, 999999)
-        outer_dist_x.setValue(self._cfg.getInt('Picture', 'outer_dist_x'))
-        self.add('Picture', 'outer_dist_x', outer_dist_x)
-
-        outer_dist_y = QtWidgets.QSpinBox()
-        outer_dist_y.setRange(0, 999999)
-        outer_dist_y.setValue(self._cfg.getInt('Picture', 'outer_dist_y'))
-        self.add('Picture', 'outer_dist_y', outer_dist_y)
-
-        skip = QtWidgets.QLineEdit(self._cfg.get('Picture', 'skip'))
-        self.add('Picture', 'skip', skip)
+        skip_last = QtWidgets.QCheckBox()
+        skip_last.setChecked(self._cfg.getBool('Picture', 'skip_last'))
+        self.add('Picture', 'skip_last', skip_last)
 
         bg = QtWidgets.QLineEdit(self._cfg.get('Picture', 'background'))
         self.add('Picture', 'background', bg)
@@ -699,15 +1353,10 @@ class Settings(QtWidgets.QFrame):
         lay_size.addWidget(QtWidgets.QLabel('x'))
         lay_size.addWidget(size_y)
 
-        lay_inner_dist = QtWidgets.QHBoxLayout()
-        lay_inner_dist.addWidget(inner_dist_x)
-        lay_inner_dist.addWidget(QtWidgets.QLabel('x'))
-        lay_inner_dist.addWidget(inner_dist_y)
-
-        lay_outer_dist = QtWidgets.QHBoxLayout()
-        lay_outer_dist.addWidget(outer_dist_x)
-        lay_outer_dist.addWidget(QtWidgets.QLabel('x'))
-        lay_outer_dist.addWidget(outer_dist_y)
+        lay_dist = QtWidgets.QHBoxLayout()
+        lay_dist.addWidget(min_dist_x)
+        lay_dist.addWidget(QtWidgets.QLabel('x'))
+        lay_dist.addWidget(min_dist_y)
 
         def file_dialog():
             dialog = QtWidgets.QFileDialog.getOpenFileName
@@ -724,9 +1373,8 @@ class Settings(QtWidgets.QFrame):
         layout = QtWidgets.QFormLayout()
         layout.addRow(_('Number of shots per picture:'), lay_num)
         layout.addRow(_('Size of assembled picture [px]:'), lay_size)
-        layout.addRow(_('Min. distance between shots [px]:'), lay_inner_dist)
-        layout.addRow(_('Min. distance border to shots [px]:'), lay_outer_dist)
-        layout.addRow(_('Skip pictures:'), skip)
+        layout.addRow(_('Min. distance between shots [px]:'), lay_dist)
+        layout.addRow(_('Omit last picture:'), skip_last)
         layout.addRow(_('Background image:'), lay_file)
 
         widget = QtWidgets.QWidget()
@@ -834,6 +1482,10 @@ class Settings(QtWidgets.QFrame):
         pdf.setChecked(self._cfg.getBool('Printer', 'pdf'))
         self.add('Printer', 'pdf', pdf)
 
+        printer_in_box = QtWidgets.QCheckBox()
+        printer_in_box.setChecked(self._cfg.getBool('Printer', 'printer_in_box'))
+        self.add('Printer', 'printer_in_box', printer_in_box)
+
         confirmation = QtWidgets.QCheckBox()
         confirmation.setChecked(self._cfg.getBool('Printer', 'confirmation'))
         self.add('Printer', 'confirmation', confirmation)
@@ -860,107 +1512,9 @@ class Settings(QtWidgets.QFrame):
         layout.addRow(_('Enable printing:'), enable)
         layout.addRow(_('Module:'), module)
         layout.addRow(_('Print to PDF (for debugging):'), pdf)
+        layout.addRow(_('Ist der Drucker in der Box:'), printer_in_box)
         layout.addRow(_('Ask for confirmation before printing:'), confirmation)
         layout.addRow(_('Paper size [mm]:'), lay_size)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
-
-    def createMailerSettings(self):
-
-        self.init('Mailer')
-
-        enable = QtWidgets.QCheckBox()
-        enable.setChecked(self._cfg.getBool('Mailer', 'enable'))
-        self.add('Mailer', 'enable', enable)
-
-        sender = QtWidgets.QLineEdit(self._cfg.get('Mailer', 'sender'))
-        self.add('Mailer', 'sender', sender)
-        recipient = QtWidgets.QLineEdit(self._cfg.get('Mailer', 'recipient'))
-        self.add('Mailer', 'recipient', recipient)
-
-        subject = QtWidgets.QLineEdit(self._cfg.get('Mailer', 'subject'))
-        self.add('Mailer', 'subject', subject)
-        message = QtWidgets.QLineEdit(self._cfg.get('Mailer', 'message'))
-        self.add('Mailer', 'message', message)
-
-        server = QtWidgets.QLineEdit(self._cfg.get('Mailer', 'server'))
-        self.add('Mailer', 'server', server)
-        port = QtWidgets.QSpinBox()
-        port.setRange(1, 999999)
-        port.setValue(self._cfg.getInt('Mailer', 'port'))
-        self.add('Mailer', 'port', port)
-        use_tls = QtWidgets.QCheckBox()
-        use_tls.setChecked(self._cfg.getBool('Mailer', 'use_tls'))
-        self.add('Mailer', 'use_tls', use_tls)
-
-        use_auth = QtWidgets.QCheckBox()
-        use_auth.setChecked(self._cfg.getBool('Mailer', 'use_auth'))
-        self.add('Mailer', 'use_auth', use_auth)
-        user = QtWidgets.QLineEdit(self._cfg.get('Mailer', 'user'))
-        self.add('Mailer', 'user', user)
-        password = QtWidgets.QLineEdit(self._cfg.get('Mailer', 'password'))
-        self.add('Mailer', 'password', password)
-
-        lay_server = QtWidgets.QHBoxLayout()
-        lay_server.addWidget(server)
-        lay_server.addWidget(QtWidgets.QLabel('Port:'))
-        lay_server.addWidget(port)
-        lay_server.addWidget(QtWidgets.QLabel('Use TLS:'))
-        lay_server.addWidget(use_tls)
-
-        lay_auth = QtWidgets.QHBoxLayout()
-        lay_auth.addWidget(use_auth)
-        lay_auth.addWidget(QtWidgets.QLabel('Username:'))
-        lay_auth.addWidget(user)
-        lay_auth.addWidget(QtWidgets.QLabel('Password:'))
-        lay_auth.addWidget(password)
-
-        layout = QtWidgets.QFormLayout()
-        layout.addRow(_('Enable Mailer:'), enable)
-        layout.addRow(_('Sender mail address:'), sender)
-        layout.addRow(_('Recipient mail address:'), recipient)
-        layout.addRow(_('Mail subject'), subject)
-        layout.addRow(_('Mail message:'), message)
-        layout.addRow(_('SMTP server:'), lay_server)
-        layout.addRow(_('Server requires auth:'), lay_auth)
-
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        return widget
-
-    def createUploadSettings(self):
-
-        self.init('UploadWebdav')
-
-        enable = QtWidgets.QCheckBox()
-        enable.setChecked(self._cfg.getBool('UploadWebdav', 'enable'))
-        self.add('UploadWebdav', 'enable', enable)
-
-        url = QtWidgets.QLineEdit(self._cfg.get('UploadWebdav', 'url'))
-        self.add('UploadWebdav', 'url', url)
-
-        use_auth = QtWidgets.QCheckBox()
-        use_auth.setChecked(self._cfg.getBool('UploadWebdav', 'use_auth'))
-        self.add('UploadWebdav', 'use_auth', use_auth)
-        user = QtWidgets.QLineEdit(self._cfg.get('UploadWebdav', 'user'))
-        self.add('UploadWebdav', 'user', user)
-        password = QtWidgets.QLineEdit(self._cfg.get('UploadWebdav',
-                                                     'password'))
-        self.add('UploadWebdav', 'password', password)
-
-        lay_auth = QtWidgets.QHBoxLayout()
-        lay_auth.addWidget(use_auth)
-        lay_auth.addWidget(QtWidgets.QLabel('Username:'))
-        lay_auth.addWidget(user)
-        lay_auth.addWidget(QtWidgets.QLabel('Password:'))
-        lay_auth.addWidget(password)
-
-        layout = QtWidgets.QFormLayout()
-        layout.addRow(_('Enable WebDAV upload:'), enable)
-        layout.addRow(_('URL (folder must exist):'), url)
-        layout.addRow(_('Server requires auth:'), lay_auth)
 
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
@@ -997,6 +1551,8 @@ class Settings(QtWidgets.QFrame):
                                               'module').currentIndex()][0])
         self._cfg.set('Camera', 'rotation', str(
             self.rot_vals_[self.get('Camera', 'rotation').currentIndex()]))
+        self._cfg.set('Camera', 'auto_enable',
+                      str(self.get('Camera', 'auto_enable').isChecked()))
 
         self._cfg.set('Picture', 'num_x', self.get('Picture', 'num_x').text())
         self._cfg.set('Picture', 'num_y', self.get('Picture', 'num_y').text())
@@ -1004,15 +1560,12 @@ class Settings(QtWidgets.QFrame):
                       self.get('Picture', 'size_x').text())
         self._cfg.set('Picture', 'size_y',
                       self.get('Picture', 'size_y').text())
-        self._cfg.set('Picture', 'inner_dist_x',
-                      self.get('Picture', 'inner_dist_x').text())
-        self._cfg.set('Picture', 'inner_dist_y',
-                      self.get('Picture', 'inner_dist_y').text())
-        self._cfg.set('Picture', 'outer_dist_x',
-                      self.get('Picture', 'outer_dist_x').text())
-        self._cfg.set('Picture', 'outer_dist_y',
-                      self.get('Picture', 'outer_dist_y').text())
-        self._cfg.set('Picture', 'skip', self.get('Picture', 'skip').text())
+        self._cfg.set('Picture', 'min_dist_x',
+                      self.get('Picture', 'min_dist_x').text())
+        self._cfg.set('Picture', 'min_dist_y',
+                      self.get('Picture', 'min_dist_y').text())
+        self._cfg.set('Picture', 'skip_last',
+                      str(self.get('Picture', 'skip_last').isChecked()))
         self._cfg.set('Picture', 'background',
                       self.get('Picture', 'background').text())
 
@@ -1040,6 +1593,8 @@ class Settings(QtWidgets.QFrame):
                       str(self.get('Printer', 'enable').isChecked()))
         self._cfg.set('Printer', 'pdf',
                       str(self.get('Printer', 'pdf').isChecked()))
+        self._cfg.set('Printer', 'printer_in_box',
+                      str(self.get('Printer', 'printer_in_box').isChecked()))
         self._cfg.set('Printer', 'confirmation',
                       str(self.get('Printer', 'confirmation').isChecked()))
         self._cfg.set('Printer', 'module',
@@ -1048,36 +1603,6 @@ class Settings(QtWidgets.QFrame):
         self._cfg.set('Printer', 'width', self.get('Printer', 'width').text())
         self._cfg.set('Printer', 'height',
                       self.get('Printer', 'height').text())
-
-        self._cfg.set('Mailer', 'enable',
-                      str(self.get('Mailer', 'enable').isChecked()))
-        self._cfg.set('Mailer', 'sender', self.get('Mailer', 'sender').text())
-        self._cfg.set('Mailer', 'recipient',
-                      self.get('Mailer', 'recipient').text())
-        self._cfg.set('Mailer', 'subject',
-                      self.get('Mailer', 'subject').text())
-        self._cfg.set('Mailer', 'message',
-                      self.get('Mailer', 'message').text())
-        self._cfg.set('Mailer', 'server', self.get('Mailer', 'server').text())
-        self._cfg.set('Mailer', 'port', self.get('Mailer', 'port').text())
-        self._cfg.set('Mailer', 'use_auth',
-                      str(self.get('Mailer', 'use_auth').isChecked()))
-        self._cfg.set('Mailer', 'use_tls',
-                      str(self.get('Mailer', 'use_tls').isChecked()))
-        self._cfg.set('Mailer', 'user', self.get('Mailer', 'user').text())
-        self._cfg.set('Mailer', 'password',
-                      self.get('Mailer', 'password').text())
-
-        self._cfg.set('UploadWebdav', 'enable',
-                      str(self.get('UploadWebdav', 'enable').isChecked()))
-        self._cfg.set('UploadWebdav', 'url',
-                      self.get('UploadWebdav', 'url').text())
-        self._cfg.set('UploadWebdav', 'use_auth',
-                      str(self.get('UploadWebdav', 'use_auth').isChecked()))
-        self._cfg.set('UploadWebdav', 'user',
-                      self.get('UploadWebdav', 'user').text())
-        self._cfg.set('UploadWebdav', 'password',
-                      self.get('UploadWebdav', 'password').text())
 
         self._cfg.write()
         self._restartAction()

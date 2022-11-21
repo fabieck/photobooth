@@ -18,6 +18,11 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import time
+from . import util
+
+#pictures for review screen
+pic_list = []
 
 
 class Context:
@@ -28,10 +33,9 @@ class Context:
         self._comm = communicator
         self.is_running = False
         if omit_welcome:
-            self.state = StartupState()
+            self.state = FormatSelectionState() #start without welcome window
         else:
-            self.state = WelcomeState()
-
+            self.state = WelcomeState() #start with welcome window
     @property
     def is_running(self):
 
@@ -56,7 +60,7 @@ class Context:
         if not isinstance(new_state, State):
             raise TypeError('state must implement State')
 
-        logging.debug('Context: New state is "{}"'.format(new_state))
+        logging.debug('New state is "{}"'.format(new_state))
 
         self._state = new_state
         self._comm.bcast(self._state)
@@ -66,7 +70,7 @@ class Context:
         if not isinstance(event, Event):
             raise TypeError('event must implement Event')
 
-        logging.debug('Context: Handling event "{}"'.format(event))
+        logging.debug('Handling event "{}"'.format(event))
 
         if isinstance(event, ErrorEvent):
             self.state = ErrorState(event.origin, event.message, self.state,
@@ -177,15 +181,22 @@ class GpioEvent(Event):
 
 class CameraEvent(Event):
 
-    def __init__(self, name, picture=None):
+    def __init__(self, name, picture=None, picture_list=None):
 
         super().__init__(name)
+
         self._picture = picture
+        self._pic_list = picture_list
 
     @property
     def picture(self):
 
-        return self._picture
+        if(self._pic_list==None):
+            return self._picture
+        else:
+            return self._picture, self._pic_list
+
+
 
 
 class WorkerEvent(Event):
@@ -282,7 +293,7 @@ class ErrorState(State):
             context.state.update()
         elif isinstance(event, GuiEvent) and event.name == 'abort':
             if self.is_running:
-                context.state = IdleState()
+                context.state = IdleState() #so wars vorher
             else:
                 context.state = TeardownState(TeardownEvent.WELCOME)
         else:
@@ -322,7 +333,8 @@ class WelcomeState(State):
 
         if isinstance(event, GuiEvent):
             if event.name == 'start':
-                context.state = StartupState()
+                context.state = FormatSelectionState()
+                #context.state = StartupState()
             elif event.name == 'exit':
                 context.state = TeardownState(TeardownEvent.EXIT)
         else:
@@ -337,9 +349,45 @@ class StartupState(State):
 
     def handleEvent(self, event, context):
 
-        if isinstance(event, CameraEvent) and event.name == 'ready':
+        if isinstance(event, CameraEvent) and (event.name == 'ready'): # or event.name == 'start'):
             context.is_running = True
             context.state = IdleState()
+        else:
+            raise TypeError('Unknown Event type "{}"'.format(event))
+
+
+class FormatSelectionState(State):
+
+    def __init__(self):
+        print("FormatSelectionState")
+
+        super().__init__()
+
+    def handleEvent(self, event, context):
+
+        if isinstance(event, GuiEvent):
+            if event.name == 'start':
+                context.state = StartupState()
+            elif event.name == 'grau':
+                context.state = FormatSelectionStateGrau()
+        else:
+            raise TypeError('Unknown Event type "{}"'.format(event))
+
+
+class FormatSelectionStateGrau(State):
+
+    def __init__(self):
+        print("FormatSelectionStateGrau")
+
+        super().__init__()
+
+    def handleEvent(self, event, context):
+
+        if isinstance(event, GuiEvent):
+            if event.name == 'start':
+                context.state = StartupState()
+            elif event.name == 'farbe':
+                context.state = FormatSelectionState()
         else:
             raise TypeError('Unknown Event type "{}"'.format(event))
 
@@ -368,7 +416,7 @@ class GreeterState(State):
     def handleEvent(self, event, context):
 
         if ((isinstance(event, GuiEvent) or isinstance(event, GpioEvent)) and
-           event.name == 'countdown'):
+           event.name == 'countdown' or event.name == 'trigger'):
             context.state = CountdownState(1)
         else:
             raise TypeError('Unknown Event type "{}"'.format(event))
@@ -415,55 +463,142 @@ class CaptureState(State):
         if isinstance(event, CameraEvent) and event.name == 'countdown':
             context.state = CountdownState(self.num_picture + 1)
         elif isinstance(event, CameraEvent) and event.name == 'assemble':
-            context.state = AssembleState()
+            context.state = AssembleState(self.num_picture)
         else:
             raise TypeError('Unknown Event type "{}"'.format(event))
 
 
 class AssembleState(State):
 
-    def __init__(self):
+    def __init__(self, num_picture):
 
         super().__init__()
+        self._num_picture = num_picture
+        self._just_printed = False
 
     def handleEvent(self, event, context):
 
         if isinstance(event, CameraEvent) and event.name == 'review':
-            context.state = ReviewState(event.picture)
+            pic, pic_list = event.picture
+            context.state = ReviewState(pic, pic_list, self._num_picture, self._just_printed)
         else:
             raise TypeError('Unknown Event type "{}"'.format(event))
 
 
 class ReviewState(State):
 
-    def __init__(self, picture):
+    def __init__(self, picture, pic_list, num_picture, just_printed):
 
         super().__init__()
         self._picture = picture
+        self._pic_list = pic_list
+        self._num_picture = num_picture
+        self._just_printed = just_printed
 
     @property
     def picture(self):
+        return self._picture, self._pic_list
 
-        return self._picture
+    @property
+    def just_printed(self):
+
+        return self._just_printed
 
     def handleEvent(self, event, context):
 
-        if isinstance(event, GuiEvent) and event.name == 'postprocess':
-            context.state = PostprocessState()
+        if isinstance(event, GuiEvent) and event.name == 'idle':
+            context.state = FormatSelectionState()
+        elif isinstance(event, GuiEvent) and event.name == 'download':
+            context.state = DownloadState(self._picture,  self._pic_list, self._num_picture, self._just_printed)
+        elif isinstance(event, GuiEvent) and event.name == 'print':
+            context.state = PrintState(self._picture,  self._pic_list, self._num_picture, self._just_printed)
         else:
             raise TypeError('Unknown Event type "{}"'.format(event))
 
 
-class PostprocessState(State):
+class DownloadState(State):
 
-    def __init__(self):
+    def __init__(self, picture, pic_list, num_picture, just_printed):
 
         super().__init__()
+        self._picture = picture
+        self._pic_list = pic_list
+        self._num_picture = num_picture
+        self._just_printed = just_printed
+
+    @property
+    def num_picture(self):
+
+        return self._num_picture
 
     def handleEvent(self, event, context):
-
-        if ((isinstance(event, GuiEvent) or isinstance(event, GpioEvent)) and
-           event.name == 'idle'):
-            context.state = IdleState()
+        if isinstance(event, GuiEvent) and event.name == 'review':
+            context.state = ReviewState(self._picture, self._pic_list, self._num_picture, self._just_printed)
         else:
             raise TypeError('Unknown Event type "{}"'.format(event))
+
+class PrintState(State):
+
+    def __init__(self, picture, pic_list, num_picture, just_printed):
+
+        super().__init__()
+        self._picture = picture
+        self._pic_list = pic_list
+        self._num_picture = num_picture
+        self._just_printed = just_printed
+
+
+    def handleEvent(self, event, context):
+        if isinstance(event, GuiEvent) and event.name == 'print_ready':
+            self._just_printed = True
+            context.state = ReviewState(self._picture, self._pic_list, self._num_picture, self._just_printed)
+        elif isinstance(event, GuiEvent) and event.name == 'no_paper':
+            context.state = PrintNoPaperState(self._picture, self._pic_list, self._num_picture, self._just_printed)
+        elif isinstance(event, GuiEvent) and event.name == 'no_printer_connection':
+            context.state = PrintNoConnectionState(self._picture, self._pic_list, self._num_picture, self._just_printed)
+
+class PrintNoPaperState(State):
+
+    def __init__(self, picture, pic_list, num_picture, just_printed):
+
+        super().__init__()
+        self._picture = picture
+        self._pic_list = pic_list
+        self._num_picture = num_picture
+        self._just_printed = just_printed
+
+
+    def handleEvent(self, event, context):
+        if isinstance(event, GuiEvent) and event.name == 'review':
+            context.state = ReviewState(self._picture, self._pic_list, self._num_picture, self._just_printed)
+
+class PrintNoConnectionState(State):
+
+    def __init__(self, picture, pic_list, num_picture, just_printed):
+
+        super().__init__()
+        self._picture = picture
+        self._pic_list = pic_list
+        self._num_picture = num_picture
+        self._just_printed = just_printed
+
+
+
+    def handleEvent(self, event, context):
+        if isinstance(event, GuiEvent) and event.name == 'cancel_print':
+            context.state = ReviewState(self._picture, self._pic_list, self._num_picture, self._just_printed)
+# class PostprocessState(State):
+#
+#     def __init__(self):
+#
+#         super().__init__()
+#
+#     def handleEvent(self, event, context):
+#
+#         if ((isinstance(event, GuiEvent) or isinstance(event, GpioEvent)) and
+#            event.name == 'idle'):
+#             context.state = FormatSelectionState()
+#             #context.state = StartupState()
+#
+#         else:
+#             raise TypeError('Unknown Event type "{}"'.format(event))

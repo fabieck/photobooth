@@ -37,7 +37,6 @@ from .util import lookup_and_import
 from .StateMachine import Context, ErrorEvent
 from .Threading import Communicator, Workers
 from .worker import Worker
-
 # Globally install gettext for I18N
 gettext.install('photobooth', 'photobooth/locale')
 
@@ -54,7 +53,8 @@ class CameraProcess(mp.Process):
 
     def run(self):
 
-        logging.debug('CameraProcess: Initializing...')
+        logging.debug('Start CameraProcess')
+        test = self._cfg.get('Picture','picture_grayscale')
 
         CameraModule = lookup_and_import(
             camera.modules, self._cfg.get('Camera', 'module'), 'camera')
@@ -62,14 +62,12 @@ class CameraProcess(mp.Process):
 
         while True:
             try:
-                logging.debug('CameraProcess: Running...')
                 if cap.run():
                     break
             except Exception as e:
-                logging.exception('CameraProcess: Exception "{}"'.format(e))
                 self._comm.send(Workers.MASTER, ErrorEvent('Camera', str(e)))
 
-        logging.debug('CameraProcess: Exit')
+        logging.debug('Exit CameraProcess')
 
 
 class GuiProcess(mp.Process):
@@ -84,12 +82,11 @@ class GuiProcess(mp.Process):
 
     def run(self):
 
-        logging.debug('GuiProcess: Initializing...')
+        logging.debug('Start GuiProcess')
         Gui = lookup_and_import(gui.modules, self._cfg.get('Gui', 'module'),
                                 'gui')
-        logging.debug('GuiProcess: Running...')
         retval = Gui(self._argv, self._cfg, self._comm).run()
-        logging.debug('GuiProcess: Exit')
+        logging.debug('Exit GuiProcess')
         return retval
 
 
@@ -105,18 +102,16 @@ class WorkerProcess(mp.Process):
 
     def run(self):
 
-        logging.debug('WorkerProcess: Initializing...')
+        logging.debug('Start WorkerProcess')
 
         while True:
             try:
-                logging.debug('WorkerProcess: Running...')
                 if Worker(self._cfg, self._comm).run():
                     break
             except Exception as e:
-                logging.exception('WorkerProcess: Exception "{}"'.format(e))
                 self._comm.send(Workers.MASTER, ErrorEvent('Worker', str(e)))
 
-        logging.debug('WorkerProcess: Exit')
+        logging.debug('Exit WorkerProcess')
 
 
 class GpioProcess(mp.Process):
@@ -131,18 +126,16 @@ class GpioProcess(mp.Process):
 
     def run(self):
 
-        logging.debug('GpioProcess: Initializing...')
+        logging.debug('Start GpioProcess')
 
         while True:
             try:
-                logging.debug('GpioProcess: Running...')
                 if Gpio(self._cfg, self._comm).run():
                     break
             except Exception as e:
-                logging.exception('GpioProcess: Exception "{}"'.format(e))
                 self._comm.send(Workers.MASTER, ErrorEvent('Gpio', str(e)))
 
-        logging.debug('GpioProcess: Exit')
+        logging.debug('Exit GpioProcess')
 
 
 def parseArgs(argv):
@@ -156,26 +149,11 @@ def parseArgs(argv):
     return parser.parse_known_args()
 
 
-def mainloop(comm, context):
-
-    while True:
-        try:
-            for event in comm.iter(Workers.MASTER):
-                    exit_code = context.handleEvent(event)
-                    if exit_code in (0, 123):
-                        return exit_code
-        except Exception as e:
-            logging.exception('Main: Exception "{}"'.format(e))
-            comm.send(Workers.MASTER, ErrorEvent('Gpio', str(e)))
-
-
 def run(argv, is_run):
 
     logging.info('Photobooth version: %s', __version__)
-
     # Load configuration
     config = Config('photobooth.cfg')
-
     comm = Communicator()
     context = Context(comm, is_run)
 
@@ -192,7 +170,10 @@ def run(argv, is_run):
         proc.start()
 
     # Enter main loop
-    exit_code = mainloop(comm, context)
+    for event in comm.iter(Workers.MASTER):
+        exit_code = context.handleEvent(event)
+        if exit_code in (0, 123):
+            break
 
     # Wait for processes to finish
     for proc in procs:
@@ -208,7 +189,6 @@ def main(argv):
     # Parse command line arguments
     parsed_args, unparsed_args = parseArgs(argv)
     argv = argv[:1] + unparsed_args
-
     # Setup log level and format
     if parsed_args.debug:
         log_level = logging.DEBUG

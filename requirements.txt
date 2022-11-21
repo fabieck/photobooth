@@ -1,0 +1,9 @@
+opencv-python
+Pillow
+gpiozero
+gphoto2
+pycups
+requests
+pyqt5
+qrcode
+flask

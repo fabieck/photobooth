@@ -17,17 +17,56 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import logging
 import os.path
+import time
+import glob
 
 from time import localtime, strftime
 
+from .PictureList import PictureList
 from .. import StateMachine
 from ..Threading import Workers
 
-from .PictureList import PictureList
-from .PictureMailer import PictureMailer
-from .PictureSaver import PictureSaver
-from .PictureUploadWebdav import PictureUploadWebdav
+
+class WorkerTask:
+
+    def __init__(self, **kwargs):
+
+        assert not kwargs
+
+    def do(self, picture):
+
+        raise NotImplementedError()
+
+
+class PictureSaver(WorkerTask):
+
+    def __init__(self, basename):
+
+        super().__init__()
+
+        self._pic_list = PictureList(basename)
+
+    def do(self, picture):
+
+        filename = self._pic_list.getNext()
+        logging.info('Saving picture as %s', filename)
+        #os.system('rm -rf webserver/static/people_photo/p*')
+        if(filename.find("shot")==-1):
+            new_string ="cp " + filename + " webserver/static/people_photo"
+
+        with open(filename, 'wb') as f:
+            f.write(picture.getbuffer())
+        time.sleep(1)
+        if(filename.find("shot")==-1):
+            os.system(new_string)
+        files = glob.glob('webserver/static/people_photo/*.png')
+        # print("files", files)
+        files.sort(key=os.path.getmtime)
+        if (len(files) > 4):
+            print("remove files")
+            os.remove(files[0])
 
 
 class Worker:
@@ -35,18 +74,6 @@ class Worker:
     def __init__(self, config, comm):
 
         self._comm = comm
-
-        # Picture list for assembled pictures
-        path = os.path.join(config.get('Storage', 'basedir'),
-                            config.get('Storage', 'basename'))
-        basename = strftime(path, localtime())
-        self._pic_list = PictureList(basename)
-
-        # Picture list for individual shots
-        path = os.path.join(config.get('Storage', 'basedir'),
-                            config.get('Storage', 'basename') + '_shot_')
-        basename = strftime(path, localtime())
-        self._shot_list = PictureList(basename)
 
         self.initPostprocessTasks(config)
         self.initPictureTasks(config)
@@ -56,22 +83,20 @@ class Worker:
         self._postprocess_tasks = []
 
         # PictureSaver for assembled pictures
-        self._postprocess_tasks.append(PictureSaver(self._pic_list.basename))
-
-        # PictureMailer for assembled pictures
-        if config.getBool('Mailer', 'enable'):
-            self._postprocess_tasks.append(PictureMailer(config))
-
-        # PictureUploadWebdav to upload pictures to a webdav storage
-        if config.getBool('UploadWebdav', 'enable'):
-            self._postprocess_tasks.append(PictureUploadWebdav(config))
+        path = os.path.join(config.get('Storage', 'basedir'),
+                            config.get('Storage', 'basename'))
+        basename = strftime(path, localtime())
+        self._postprocess_tasks.append(PictureSaver(basename))
 
     def initPictureTasks(self, config):
 
         self._picture_tasks = []
 
         # PictureSaver for single shots
-        self._picture_tasks.append(PictureSaver(self._shot_list.basename))
+        path = os.path.join(config.get('Storage', 'basedir'),
+                            config.get('Storage', 'basename') + '_shot_')
+        basename = strftime(path, localtime())
+        self._picture_tasks.append(PictureSaver(basename))
 
     def run(self):
 
@@ -85,10 +110,11 @@ class Worker:
         if isinstance(state, StateMachine.TeardownState):
             self.teardown(state)
         elif isinstance(state, StateMachine.ReviewState):
-            self.doPostprocessTasks(state.picture, self._pic_list.getNext())
+            pic_main, pic_list = state.picture
+            self.doPostprocessTasks(pic_main)#state.picture)
         elif isinstance(state, StateMachine.CameraEvent):
             if state.name == 'capture':
-                self.doPictureTasks(state.picture, self._shot_list.getNext())
+                self.doPictureTasks(state.picture)
             else:
                 raise ValueError('Unknown CameraEvent "{}"'.format(state))
 
@@ -96,12 +122,12 @@ class Worker:
 
         pass
 
-    def doPostprocessTasks(self, picture, filename):
+    def doPostprocessTasks(self, picture):
 
         for task in self._postprocess_tasks:
-            task.do(picture, filename)
+            task.do(picture)
 
-    def doPictureTasks(self, picture, filename):
+    def doPictureTasks(self, picture):
 
         for task in self._picture_tasks:
-            task.do(picture, filename)
+            task.do(picture)

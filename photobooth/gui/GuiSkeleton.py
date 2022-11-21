@@ -67,9 +67,9 @@ class GuiSkeleton:
 
         raise NotImplementedError()
 
-    def showPostprocess(self, state):
+  #  def showPostprocess(self, state):
 
-        raise NotImplementedError()
+     #   raise NotImplementedError()
 
     def teardown(self, state):
 
@@ -83,6 +83,10 @@ class GuiSkeleton:
             self.showError(state)
         elif isinstance(state, StateMachine.WelcomeState):
             self.showWelcome(state)
+        elif isinstance(state, StateMachine.FormatSelectionState):
+            self.showFormatSelection(state)
+        elif isinstance(state, StateMachine.FormatSelectionStateGrau):
+            self.showFormatSelectionGrau(state)
         elif isinstance(state, StateMachine.StartupState):
             self.showStartup(state)
         elif isinstance(state, StateMachine.IdleState):
@@ -97,7 +101,16 @@ class GuiSkeleton:
             self.showAssemble(state)
         elif isinstance(state, StateMachine.ReviewState):
             self.showReview(state)
-        elif isinstance(state, StateMachine.PostprocessState):
-            self.showPostprocess(state)
+        elif isinstance(state, StateMachine.DownloadState):
+            print("state: ", state)
+            self.showDownload(state)
+        elif isinstance(state, StateMachine.PrintState):
+            self.showPrinting(state)
+        elif isinstance(state, StateMachine.PrintNoPaperState):
+            self.showPrintingNoPaper(state)
+        elif isinstance(state, StateMachine.PrintNoConnectionState):
+            self.showPrinterNoConnection(state)
+       # elif isinstance(state, StateMachine.PostprocessState):
+       #     self.showPostprocess(state)
         elif isinstance(state, StateMachine.TeardownState):
             self.teardown(state)
