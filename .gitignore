@@ -10,4 +10,7 @@ print_*.pdf
 20??-??-??
 build
 dist
+*.jpeg
+*.jpg
+*.png
 
