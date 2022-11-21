@@ -69,6 +69,10 @@ I am also happy to hear any success stories! Feel free to [submit them here](htt
 
 If you find this application useful, please consider [buying me a coffee](https://www.buymeacoffee.com/reuterbal).
 
+## Use Docker:
+execute docker_build.sh 
+Dockerfile does not work at the moment, have to check why
+
 
 ## License
 I provide this code under AGPL v3. See [LICENSE](https://github.com/reuterbal/photobooth/blob/master/LICENSE.txt).

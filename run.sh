@@ -1,0 +1,1 @@
+docker run -it --rm --name docker_photobooth -v /dev/bus/usb:/dev/bus/usb --privileged --network host -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=$DISPLAY -v /dev/shm:/dev/shm --device /dev/dri --volume "$(pwd):/usr/src" photobooth bash -c 'python -m photobooth' 

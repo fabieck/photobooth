@@ -1,11 +1,12 @@
-FROM python:3.7
+FROM python:3.8
 
 # set a directory for the app
 WORKDIR /usr
 
 # copy all the files to the container
 #COPY /gphoto2-updater .
-RUN wget --quiet https://raw.githubusercontent.com/gonzalo/gphoto2-updater/master/gphoto2-updater.sh
+RUN wget --quiet https://raw.githubusercontent.com/gonzalo/gphoto2-updater/master/gphoto2-updater.sh 
+RUN wget --quiet https://raw.githubusercontent.com/gonzalo/gphoto2-updater/master/.env
 RUN chmod +x gphoto2-updater.sh
 RUN ./gphoto2-updater.sh --stable
 COPY requirements.txt requirements.txt
